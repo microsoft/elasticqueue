@@ -1,0 +1,8 @@
+package: github.com/mixer/elasticqueue
+import:
+- package: github.com/olivere/elastic
+  version: ^6.2.11
+- package: github.com/google/uuid
+  version: ^1.0.0
+- package: github.com/pkg/errors
+  version: ^0.8.0
