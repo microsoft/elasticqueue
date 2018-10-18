@@ -1,5 +1,5 @@
-hash: b7101ee531de145f685ea6042f6c4162eadab5e35b2a7261bff274b20891c593
-updated: 2018-10-18T09:59:31.244901204-07:00
+hash: 2dff66d48825f3d467c980949d385c7a541e75609257c7918b77381335c72000
+updated: 2018-10-18T13:20:33.995434536-07:00
 imports:
 - name: github.com/google/uuid
   version: d460ce9f8df2e77fb1ba55ca87fafed96c607494
@@ -9,6 +9,8 @@ imports:
   - buffer
   - jlexer
   - jwriter
+- name: github.com/mixer/clock
+  version: 2e1c7bb73d119fe867a465e77859e3da5838dc94
 - name: github.com/olivere/elastic
   version: 425e5369a8f054f4f447f7c8ee1bf605f48425ab
   subpackages:
@@ -16,4 +18,21 @@ imports:
   - uritemplates
 - name: github.com/pkg/errors
   version: 645ef00459ed84a119197bfb8d8205042c6df63d
-testImports: []
+testImports:
+- name: github.com/davecgh/go-spew
+  version: d8f796af33cc11cb798c1aaeb27a4ebc5099927d
+  subpackages:
+  - spew
+- name: github.com/pmezard/go-difflib
+  version: 792786c7400a136282c1664665ae0a8db921c6c2
+  subpackages:
+  - difflib
+- name: github.com/stretchr/objx
+  version: ef50b0de28773081167c97fc27cf29a0bf8b8c71
+- name: github.com/stretchr/testify
+  version: f35b8ab0b5a2cef36673838d662e249dd9c94686
+  subpackages:
+  - assert
+  - mock
+  - require
+  - suite

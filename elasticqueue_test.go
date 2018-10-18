@@ -7,15 +7,15 @@ import (
 	"time"
 
 	"github.com/olivere/elastic"
+	"github.com/pkg/errors"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 )
 
 type ElasticQueueSuite struct {
 	suite.Suite
-	r     *mockRequester
-	c     *mockCondition
-	queue *Queue
+	r *mockRequester
+	c *mockCondition
 }
 
 var (
@@ -56,7 +56,10 @@ func (m *mockRequester) Send(data []elastic.BulkableRequest) error {
 	m.data = append(m.data, data...)
 	m.calls++
 	m.mu.Unlock()
-	return m.err
+
+	err := m.err
+	m.err = nil
+	return err
 }
 
 var _ Requester = &mockRequester{}
@@ -67,11 +70,11 @@ type mockCondition struct {
 }
 
 func (m *mockCondition) Inserted(document []byte, length int) bool {
-	return m.Called([]byte(document), length).Bool(0)
+	return m.Called(json.RawMessage(document), length).Bool(0)
 }
 
 func (m *mockCondition) Write() (doWrite <-chan struct{}, cancel func()) {
-	return m.writeChannel, func() {}
+	return m.writeChannel, func() { close(m.writeChannel) }
 }
 
 func (m *mockCondition) Flushed() { m.Called() }
@@ -89,13 +92,85 @@ func (e *ElasticQueueSuite) TearDownTest() {
 	e.c.AssertExpectations(e.T())
 }
 
+func (e *ElasticQueueSuite) TestPanicsIfCreatedWithoutCounditions() {
+	e.Panics(func() { NewQueue(nil, WithRequester(e.r)) })
+}
+
 func (e *ElasticQueueSuite) TestRunsWriteOnInsertedCheck() {
 	q := NewQueue(nil, WithRequester(e.r), WithCondition(e.c))
 	e.c.On("Inserted", mockDocument1, 1).Return(true)
+	e.c.On("Flushed").Return()
 	e.Nil(q.Store("foo", "bar", mockDocument1))
+
 	e.Len(e.r.WaitForData(1), 1)
 	e.Equal(1, e.r.calls)
-	e.queue.Close()
+	q.Close()
 
 	e.Equal(1, e.r.calls)
+}
+
+func (e *ElasticQueueSuite) TestFlushesOutstandingDataOnClose() {
+	q := NewQueue(nil, WithRequester(e.r), WithCondition(e.c))
+	e.c.On("Inserted", mockDocument1, 1).Return(false)
+	e.Nil(q.Store("foo", "bar", mockDocument1))
+
+	e.Len(e.r.WaitForData(1), 0)
+
+	e.Equal(0, e.r.calls)
+	q.Close()
+	e.Equal(1, e.r.calls)
+	e.Len(e.r.data, 1)
+}
+
+func (e *ElasticQueueSuite) TestHandlesError() {
+	err := errors.New("oh no")
+	gotError := false
+	e.r.err = err
+
+	q := NewQueue(nil, WithRequester(e.r), WithCondition(e.c), WithErrorHandler(func(actualErr error) {
+		gotError = true
+		e.Equal(err, actualErr)
+	}))
+
+	e.c.On("Inserted", mockDocument1, 1).Return(false)
+	e.Nil(q.Store("foo", "bar", mockDocument1))
+	q.Close()
+
+	e.True(gotError)
+}
+
+func (e *ElasticQueueSuite) TestRunsBackoff() {
+	e.r.err = errors.New("oh no")
+	q := NewQueue(nil,
+		WithRequester(e.r),
+		WithCondition(e.c),
+		WithBackoff(elastic.NewConstantBackoff(time.Millisecond*10)),
+		WithErrorHandler(func(_ error) { e.Fail("expected not to get an error") }))
+
+	e.c.On("Inserted", mockDocument1, 1).Return(false)
+	e.Nil(q.Store("foo", "bar", mockDocument1))
+	q.Close()
+
+	e.Equal(2, e.r.calls)
+}
+
+func (e *ElasticQueueSuite) TestWritesOnBackgroundChannel() {
+	e.c.writeChannel = make(chan struct{})
+
+	q := NewQueue(nil,
+		WithRequester(e.r),
+		WithCondition(e.c))
+
+	e.c.On("Inserted", mockDocument1, 1).Return(false)
+	e.c.On("Flushed").Return()
+	e.Nil(q.Store("foo", "bar", mockDocument1))
+
+	e.c.writeChannel <- struct{}{}
+	e.Len(e.r.WaitForData(1), 1)
+	e.Equal(1, e.r.calls)
+
+	q.Close()
+
+	e.Equal(1, e.r.calls)
+	<-e.c.writeChannel // expect to have closed the channel
 }

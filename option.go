@@ -16,7 +16,9 @@ func WithTimeout(timeout time.Duration) Option {
 	}
 }
 
-// WithBackoff sets the backoff for ElasticSearch write retries.
+// WithBackoff sets the backoff for ElasticSearch write retries. The backoff
+// is permitted to be `nil` (the default) in which case no retries will
+// be made against ElasticSearch.
 func WithBackoff(backoff elastic.Backoff) Option {
 	return func(q *Queue) {
 		q.backoff = backoff

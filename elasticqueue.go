@@ -24,6 +24,7 @@ func NewQueue(client *elastic.Client, options ...Option) *Queue {
 	queue := &Queue{
 		errorHandler: defaultErrorHandler,
 		closer:       make(chan struct{}),
+		timeout:      time.Second * 5,
 	}
 
 	for _, option := range options {
@@ -147,10 +148,16 @@ func (q *Queue) listenToConditions() {
 }
 
 func (q *Queue) writeImmediately(queue []elastic.BulkableRequest) {
-	err := elastic.Retry(
-		func() error { return q.requester.Send(queue) },
-		q.backoff,
-	)
+	var err error
+
+	if q.backoff != nil {
+		err = elastic.Retry(
+			func() error { return q.requester.Send(queue) },
+			q.backoff,
+		)
+	} else {
+		err = q.requester.Send(queue)
+	}
 
 	if err != nil {
 		q.errorHandler(err)

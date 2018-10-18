@@ -3,6 +3,8 @@ package elasticqueue
 import (
 	"math"
 	"time"
+
+	"github.com/mixer/clock"
 )
 
 // Condition is passed to the Queue to determine when it should be written out.
@@ -25,13 +27,13 @@ var maxDuration = time.Duration(math.MaxInt64)
 
 // writeAfterTimer is a helper function that returns the data wanted by
 // Condition.Write after the timer fires.
-func writeAfterTimer(timer *time.Timer) (doWrite <-chan struct{}, cancel func()) {
+func writeAfterTimer(timer clock.Timer) (doWrite <-chan struct{}, cancel func()) {
 	ch := make(chan struct{})
 	closer := make(chan struct{})
 	go func() {
 		for {
 			select {
-			case <-timer.C:
+			case <-timer.Chan():
 				select {
 				case ch <- struct{}{}:
 				case <-closer:
@@ -52,14 +54,14 @@ func writeAfterTimer(timer *time.Timer) (doWrite <-chan struct{}, cancel func())
 func WriteAfterIdle(interval time.Duration) Condition {
 	return &afterIdleCondition{
 		interval: interval,
-		timer:    time.NewTimer(maxDuration),
+		timer:    clock.C.NewTimer(maxDuration),
 	}
 }
 
 var _ Condition = &afterIdleCondition{}
 
 type afterIdleCondition struct {
-	timer    *time.Timer
+	timer    clock.Timer
 	interval time.Duration
 }
 
@@ -80,20 +82,20 @@ func (a *afterIdleCondition) Flushed() { a.timer.Reset(maxDuration) }
 // WriteAfterInterval returns a write condition which'll cause the queue to be
 // written out after a constant amount of time after the first write.
 func WriteAfterInterval(interval time.Duration) Condition {
-	return &afterIntervalCondition{interval: interval}
+	return &afterIntervalCondition{timer: clock.C.NewTimer(maxDuration), interval: interval}
 }
 
 var _ Condition = &afterIntervalCondition{}
 
 type afterIntervalCondition struct {
-	timer    *time.Timer
+	timer    clock.Timer
 	interval time.Duration
 }
 
 // Inserted implements Condition.Inserted
 func (a *afterIntervalCondition) Inserted(_ []byte, length int) (writeImmediately bool) {
 	if length == 1 {
-		a.timer = time.NewTimer(a.interval)
+		a.timer.Reset(a.interval)
 	}
 
 	return false
